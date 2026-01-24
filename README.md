@@ -1,6 +1,16 @@
 # COMP4107: Neural Networks | Group 51
 
 - Andrew Wallace - 101210291 - andrewwallace3@cmail.carleton.ca
+- Amr Altaweel
+- Christer Henrysson
+
+# Resources
+
+- Discord: https://discord.gg/UBZAzGSA
+
+- GitHub (Assignments): https://github.com/awallace77/comp4107
+
+- GitHub (Project): https://github.com/2026W-COMP4107/project-group-51
 
 <br>
 <br>
