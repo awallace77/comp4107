@@ -2,13 +2,16 @@
 
 - Andrew Wallace - 101210291 - andrewwallace3@cmail.carleton.ca
 
-## 🧑‍💻 Git Development Workflow
+<br>
+<br>
 
-### Prerequisites
+# 🧑‍💻 Git Development Workflow
+
+## Prerequisites
 
 - Git is installed locally
 
-### Setup
+## Setup
 
 > Please use the following steps to setup the git repository locally
 
@@ -20,7 +23,7 @@
 
    Where `<url>` is the URL of the Git repository
 
-### Starting a New Task
+## Starting a New Task
 
 Please use the following steps when starting a new task:
 
@@ -59,3 +62,8 @@ Please use the following steps when starting a new task:
 6. Set the “Compare” branch to your `<branch_name>`
 7. Set the “Base” branch to the desired base branch (usually `development` or `main`)
 8. Fill out the following:
+   - Reviewers
+   - Assignees
+   - Title
+   - Description
+9. Create the pull request (PR)
