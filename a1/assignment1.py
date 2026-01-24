@@ -1,13 +1,21 @@
 # Name this file assignment1.py when you submit
-import torch
+# import torch
+import math
 
 # A function simulating an artificial neuron
 def artificial_neuron(x, w):
   # x is a list of inputs of length n
   # w is a list of inputs of length n
 
+  # Take weighted sum
+  weighted_sum = sum([xi * wi for xi, wi in zip(x, w)])
+  output = siLu(weighted_sum) 
+
   # output is the output from the neuron
   return output
+
+def siLu(x):
+  return x / (1 + math.exp(-x))
 
 
 # A function performing gradient descent
@@ -27,3 +35,20 @@ def pytorch_module():
 
   # A pytorch module
   return module
+
+
+if __name__ == "__main__":
+
+  # Question 1
+  siLu_input = 2
+  siLu_output = siLu(siLu_input)
+  x = [1, 2, 3, 4]
+  w = [1, 1, 1, 1]
+  output = artificial_neuron(x, w)
+  print(f"QUESTION 1: siLu({siLu_input})")
+  print(f"Expected: 1.76159")
+  print(f"Actual  : {siLu_output}" )
+  print("")
+  print(f"QUESTION 1: artificial_neuron")
+  print(f"Expected: ?")
+  print(f"Actual  : {output}")
