@@ -77,6 +77,36 @@ def pytorch_module():
   module = NeuralNetwork()
   return module
 
+
+def q4a_gradient_descent():
+  """ Experiments for Q4a """
+
+  x_1 = 3
+  x_2 = -2
+  y_1 = 0.5
+  y_2 = -0.75
+
+  alphas = [0.1, 0.05, 0.01, 0.005, 0.001]
+  x0 = [0, 0]
+
+  def f(input):
+    a = input[0]
+    b = input[1]
+    return 1/2 * ((a * x_1 + b - y_1)**2 + (a * x_2 + b - y_2)**2)
+  
+  def df(input):
+    a = input[0]
+    b = input[1]
+    df_da = x_1 * (a * x_1 + b - y_1) + x_2 * (a * x_2 + b - y_2)
+    df_db = (a * x_1 + b - y_1) + (a * x_2 + b - y_2)
+    return [df_da, df_db]
+
+  for alpha in alphas:
+    print(f"[TESTING]: Q4A - gradient_descent (lr = {alpha})")
+    print(f"Actual  : {gradient_descent(f, df, x0, alpha)}" )
+    print("")
+
+
 ## Testing functions ## 
 def test_artificial_neuron(x, w, expected):
   print(f"[TESTING]: artificial_neuron")
@@ -112,3 +142,6 @@ if __name__ == "__main__":
   # Question 3
   module = pytorch_module()
   print(module)
+
+  # Question 4
+  q4a_gradient_descent()

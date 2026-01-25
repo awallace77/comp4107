@@ -42,6 +42,65 @@ Instructions: \\
 \vspace{0.5em}
 \newpage 
 
-\section*{Section 1}
+\section*{Question 1 [10 marks]}
+Please see \texttt{assignment1.py} for implementation of \texttt{artificial\_neuron}.
 
+\section*{Question 2 [10 marks]}
+Please see \texttt{assignment1.py} for implementation of \texttt{gradient\_descent}.
+
+\section*{Question 3 [10 marks]}
+Please see \texttt{assignment1.py} for implementation of \texttt{pytorch\_module}.
+
+\section*{Question 4 [10 marks]}
+\begin{enumerate}[(a)]
+  \item Gradient Descent I \\
+  We are given the function:
+  \begin{equation}
+    f(a, b) = \frac{1}{2} ((ax_1 + b - y_1)^2 + (ax_2 + b - y_2)^2)
+  \end{equation}
+  Assuming $x_1, x_2, y_1, y_2$ are constants, the derivative (gradient) of $f$ is as follows:
+  \begin{equation*}
+    \nabla f(a, b) = \begin{bmatrix}
+      \frac{\partial f}{\partial a} \\
+      \frac{\partial f}{\partial b} \\
+    \end{bmatrix}
+  \end{equation*}
+  \begin{equation*}
+    \frac{\partial f}{\partial a} = \frac{1}{2} \frac{\partial f}{\partial a} (ax_1 + b - y_1)^2 + \frac{1}{2} \frac{\partial f}{\partial a} (ax_2 + b - y_2)^2 \\
+  \end{equation*}
+  \begin{equation*}
+    \frac{\partial f}{\partial a} =  x_1 (ax_1 + b - y_1) + x_2 (ax_2 + b - y_2) \\
+  \end{equation*}
+  \begin{equation*}
+    \frac{\partial f}{\partial b} = \frac{1}{2} \frac{\partial f}{\partial b} (ax_1 + b - y_1)^2 + \frac{1}{2} \frac{\partial f}{\partial b} (ax_2 + b - y_2)^2 \\
+  \end{equation*}
+  \begin{equation*}
+    \frac{\partial f}{\partial b} = (ax_1 + b - y_1) + (ax_2 + b - y_2) \\
+  \end{equation*}
+  \begin{equation*}
+    \nabla f(a, b) = \begin{bmatrix}
+      x_1 (ax_1 + b - y_1) + x_2 (ax_2 + b - y_2) \\
+      (ax_1 + b - y_1) + (ax_2 + b - y_2) \\
+    \end{bmatrix}
+  \end{equation*}
+  Below are the parameters and results from our experiment:
+  \begin{itemize}
+    \item $\nabla f(a, b) = \begin{bmatrix}
+      x_1 (ax_1 + b - y_1) + x_2 (ax_2 + b - y_2) \\
+      (ax_1 + b - y_1) + (ax_2 + b - y_2) \\
+    \end{bmatrix}$
+    \item $x_1 = 3$
+    \item $x_2 = -2$
+    \item $y_1 = 0.5$
+    \item $y_2 = -0.75$
+    \item $\text{Initial guess} = x_0 = \begin{bmatrix}
+      0 \\
+      0
+    \end{bmatrix}$
+    \item $\text{Learning rate} = \text{alpha} = \alpha = 0.05$
+    \item Value of $a$ at minimum $= 0.2499956502209206$
+    \item Value of $b$ at minimum $= -0.249951760210792$
+    \item Minimum value for $f$ = $2.2402285941984945 \times 10^{-9}$
+  \end{itemize}
+\end{enumerate}
 \end{document} 
