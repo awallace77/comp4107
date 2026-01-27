@@ -1,5 +1,5 @@
 # Name this file assignment1.py when you submit
-import torch
+import html.entities
 import numpy as np
 import math
 
@@ -9,6 +9,10 @@ def weighted_sum(x, w):
 
 def siLu(x):
   return x / (1 + math.exp(-x))
+
+def d_siLu(x):
+  exp_neg = math.exp(-x)
+  return (1 / (1 + exp_neg)) + (x * exp_neg) / ((1 + exp_neg)**2)
 
 
 # A function simulating an artificial neuron
@@ -29,7 +33,7 @@ def artificial_neuron(x, w):
 # A function performing gradient descent
 def gradient_descent(f, df, x0, alpha):
   tolerance = 0.0001
-  maxIterations = 1000
+  maxIterations = 10000
   # f is a function that takes as input a list of length n
   # df is the gradient of f; it is a function that takes as input a list of length n
   # x0 is an initial guess for the input minimizing f
@@ -107,6 +111,46 @@ def q4a_gradient_descent():
     print("")
 
 
+
+def q4b_gradient_descent():
+  """ Experiments for Q4b """
+
+  x_1 = 3
+  x_2 = -2
+  y_1 = 0.5
+  y_2 = -0.75
+
+  alphas = [0.1, 0.05, 0.01, 0.005, 0.001]
+  x0 = [0, 0]
+
+  def f(input):
+    a = input[0]
+    b = input[1]
+    return 1/2 * ((siLu(a*x_1 + b) - y_1)**2 + (siLu(a*x_2 + b) - y_2)**2)
+  
+  def df(input):
+    a = input[0]
+    b = input[1]
+
+    z_1 = weighted_sum([x_1, 1], [a, b])
+    z_2 = weighted_sum([x_2, 1], [a, b])
+
+    e_1 = siLu(z_1) - y_1
+    e_2 = siLu(z_2) - y_2
+
+    df_da = (e_1 * d_siLu(z_1) * x_1 + e_2 * d_siLu(z_2) * x_2)
+
+    df_db = (e_1 * d_siLu(z_1) +e_2 * d_siLu(z_2))
+
+    return [df_da, df_db]
+
+
+  for alpha in alphas:
+    print(f"[TESTING]: Q4B - gradient_descent (lr = {alpha})")
+    print(f"Actual  : {gradient_descent(f, df, x0, alpha)}" )
+    print("")
+
+
 ## Testing functions ## 
 def test_artificial_neuron(x, w, expected):
   print(f"[TESTING]: artificial_neuron")
@@ -145,3 +189,5 @@ if __name__ == "__main__":
 
   # Question 4
   q4a_gradient_descent()
+  
+  q4b_gradient_descent()
