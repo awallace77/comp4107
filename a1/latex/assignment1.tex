@@ -38,7 +38,14 @@ Amr Altaweel - \\[1em]
 \end{center}
 \textbf{Getting started} \\
 Instructions: \\
-  \texttt{Insert any instructions here} \\
+To get setup run the following commands on Windows\\
+  \texttt{python3 -m venv .venv} \\
+  \texttt{source .venv/bin/activate} \\
+  \texttt{pip install -r requirements.txt} \\[1em]
+To get setup run the following commands on Linux\\
+  \texttt{python3 -m venv .venv} \\
+  \texttt{source .venv/Scripts/activate} \\
+  \texttt{pip install -r requirements.txt} \\[1em]
 \vspace{0.5em}
 \newpage 
 
@@ -52,6 +59,7 @@ Please see \texttt{assignment1.py} for implementation of \texttt{gradient\_desce
 Please see \texttt{assignment1.py} for implementation of \texttt{pytorch\_module}.
 
 \section*{Question 4 [10 marks]}
+Please see \texttt{assignment1.py} for full implementation details.
 \begin{enumerate}[(a)]
   \item Gradient Descent I \\
   We are given the function:
@@ -61,8 +69,8 @@ Please see \texttt{assignment1.py} for implementation of \texttt{pytorch\_module
   Assuming $x_1, x_2, y_1, y_2$ are constants, the derivative (gradient) of $f$ is as follows:
   \begin{equation*}
     \nabla f(a, b) = \begin{bmatrix}
-      \frac{\partial f}{\partial a} \\
-      \frac{\partial f}{\partial b} \\
+      \frac{\partial f}{\partial a} \\[0.8em]
+      \frac{\partial f}{\partial b} 
     \end{bmatrix}
   \end{equation*}
   \begin{equation*}
@@ -79,15 +87,15 @@ Please see \texttt{assignment1.py} for implementation of \texttt{pytorch\_module
   \end{equation*}
   \begin{equation*}
     \nabla f(a, b) = \begin{bmatrix}
-      x_1 (ax_1 + b - y_1) + x_2 (ax_2 + b - y_2) \\
-      (ax_1 + b - y_1) + (ax_2 + b - y_2) \\
+      x_1 (ax_1 + b - y_1) + x_2 (ax_2 + b - y_2) \\[0.8em]
+      (ax_1 + b - y_1) + (ax_2 + b - y_2)
     \end{bmatrix}
   \end{equation*}
   Below are the parameters and results from our experiment:
   \begin{itemize}
     \item $\nabla f(a, b) = \begin{bmatrix}
-      x_1 (ax_1 + b - y_1) + x_2 (ax_2 + b - y_2) \\
-      (ax_1 + b - y_1) + (ax_2 + b - y_2) \\
+      x_1 (ax_1 + b - y_1) + x_2 (ax_2 + b - y_2) \\[0.8em]
+      (ax_1 + b - y_1) + (ax_2 + b - y_2) 
     \end{bmatrix}$
     \item $x_1 = 3$
     \item $x_2 = -2$
@@ -102,5 +110,67 @@ Please see \texttt{assignment1.py} for implementation of \texttt{pytorch\_module
     \item Value of $b$ at minimum $= -0.249951760210792$
     \item Minimum value for $f$ = $2.2402285941984945 \times 10^{-9}$
   \end{itemize}
+  \item Gradient Descent II\\
+  We are given the function:
+  \begin{equation}
+    f(a, b) = \frac{1}{2} ((\text{SiLU}(ax_1 + b) - y_1)^2 + (\text{SiLU}(ax_2 + b) - y_2)^2)
+  \end{equation}  
+  Where 
+  \begin{equation*}
+    \text{SiLU}(x) = \frac{x}{1 + \text{exp}(-x)}
+  \end{equation*}
+  Assuming $x_1, x_2, y_1, y_2$ are constants, the derivative (gradient) of $f$ is as follows:
+  \begin{equation*}
+    \nabla f(a, b) = \begin{bmatrix}
+      \frac{\partial f}{\partial a} \\[0.8em]
+      \frac{\partial f}{\partial b}
+    \end{bmatrix}
+  \end{equation*}
+
+  We define the following for $i \in \{1, 2\}$:
+  \begin{equation*}
+    z_i = a x_i + b
+  \end{equation*}
+  \begin{equation*}
+    e_i = \operatorname{SiLU}(z_i) - y_i
+  \end{equation*}
+  We calculate the partial derivate with respect to $a$ and the partial derivate with respect $b$ as:
+  \begin{equation*}
+    \frac{\partial f}{\partial a} = e_1 \text{SiLU}'(z_1) x_1 + e_2 \text{SiLU}'(z_2) x_2
+  \end{equation*}
+  \begin{equation*}
+    \frac{\partial f}{\partial b} = e_1 \text{SiLU}'(z_1) + e_2 \text{SiLU}'(z_2)
+  \end{equation*}
+  So, the gradient of $f$ is
+  \begin{equation*}
+    \nabla f(a,b) = 
+      \begin{bmatrix} 
+        e_1 \text{SiLU}'(z_1) x_1 + e_2 \text{SiLU}'(z_2) x_2\\[0.8em]
+        e_1 \text{SiLU}'(z_1) + e_2 \text{SiLU}'(z_2)
+      \end{bmatrix}
+  \end{equation*}
+
+  This gives us the following parameters and results of the gradient descent: 
+  \begin{itemize}
+    \item $\nabla f(a,b) = 
+      \begin{bmatrix} 
+        e_1 \text{SiLU}'(z_1) x_1 + e_2 \text{SiLU}'(z_2) x_2\\[0.8em]
+        e_1 \text{SiLU}'(z_1) + e_2 \text{SiLU}'(z_2)
+      \end{bmatrix}$
+    \item $x_1 = 3$
+    \item $x_2 = -2$
+    \item $y_1 = 0.5$
+    \item $y_2 = -0.75$
+    \item $\text{Initial guess} = x_0 = \begin{bmatrix}
+      0 \\
+      0
+    \end{bmatrix}$
+    \item $\text{Learning rate} = \text{alpha} = \alpha = 0.05$
+    \item Value of $a$ at minimum $= 0.4033468264353714$
+    \item Value of $b$ at minimum $= -0.47115909972569386$
+    \item Minimum value for $f$ = $0.11117286369775675$
+
+  \end{itemize}
+
 \end{enumerate}
 \end{document} 

@@ -1,7 +1,7 @@
 # Name this file assignment1.py when you submit
-import html.entities
 import numpy as np
 import math
+import torch
 
 # Helper functions
 def weighted_sum(x, w):
@@ -189,5 +189,4 @@ if __name__ == "__main__":
 
   # Question 4
   q4a_gradient_descent()
-  
   q4b_gradient_descent()
