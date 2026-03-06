@@ -1,0 +1,57 @@
+
+\documentclass[12pt]{article}
+
+\usepackage{fullpage}
+\usepackage{fancybox}
+\usepackage{graphicx}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{enumerate}
+\usepackage{float} 
+\usepackage{multirow}
+\usepackage{hyperref}
+
+\begin{document} 
+
+\begin{center} \bf
+COMP4107: Project Proposal\\
+\Large Deep Reinforcement Learning (RL) and Convolutional Neural Networks (CNN) for Search and Rescue
+\end{center} 
+
+\begin{center}
+{\bf Due:} February 23th, 2026 \\
+{\bf Group 51}: Andrew Wallace (101210291) \& Amr Altaweel (101276934)
+\end{center}
+
+\subsection*{Background and Objectives}
+We aim to develop and train a reinforcement learning agent to conduct a search and rescue mission where strategic resource conservation and optimal path finding are critical for success. The agent must learn to navigate a fuel and health constrained helicopter in a 2D warzone-like grid consisting of obstacles, enemies (who can deal damage to the helicopter), bases (enemy and ally bases), and an injured soldier. The main objective is to extract the injured soldier out of the warzone. Once the injured soldier is found, the agent must determine the type and severity of the solider's injury. This, in theory, will help doctors provide the necessary treatment more efficiently, which can be the difference between life and death in a real-world scenario. \\[1em]
+This problem presents a few challenges. First, the helicopter has limited fuel and health, making optimal target finding more difficult. Second, the agent must find the correct base and injured solider. If they go to the wrong base, it could mean destruction of the helicopter and mission failed. Lastly, correctly diagnosing the type and severity of the soldiers injuries presents a classification problem to be solved.
+
+\subsection*{Proposed Methods}
+
+\subsubsection*{Deep Q-Network (DQN)}
+A Deep Q-Network (DQN) will be used as a baseline method for learning optimal navigation and decision-making in the grid environment. The agent will observe the environment state and learn an action-value function $Q(s, a)$ (where $s$ is the state and $a$ is the action), enabling the agent to select approximately optimal actions in the environment for a given state.
+
+\subsubsection*{Advantage Actor-Critic (A2C)}
+Advantage Actor-Critic (A2C) will be implemented to learn an optimal policy. In A2C, we have two models: an actor that learns the policy and a critic that learns the state values. They work together, learning a probability distribution over actions, garnering a policy that naturally handles multiple goals and balances short vs long-term rewards.
+
+\subsubsection*{Convolutional Neural Network (CNN)}
+
+Once the injured soldier is located, a pre-trained Convolutional Neural Network (CNN) will be used as a classifier to determine the injury type and severity. With limited image resources, we propose that transfer learning is used via ResNet-18 or ResNet-50 to train the classifier. This classification integrates with the RL agent by providing mission-critical information for downstream medical treatment.
+
+\subsection*{Dataset and Environment}
+A custom game environment will be created using OpenAI's Gymnasium library. This allows for a more streamlined approach for agent interaction with the environment. Furthermore, the gymnasium environment integrates well the stable-baseline3 reinforcement learning algorithms, which will serve as cross-validation with our RL algorithms. Additionally, The Kaggle \href{https://www.kaggle.com/datasets/yasinpratomo/wound-dataset}{wound dataset} will be used to train the CNN. Since there are only 432 images in this dataset, transfer learning will be used.
+
+\subsection*{Proposed Validation Strategy}
+There are five main validation strategies that we will use to analyze the performance of the agent. First, a manual calculation will be done to determine the maximum possible reward of the search and rescue simulation. All RL algorithms will be compared to the maximum reward to determine their performance. Second, cross-reference between the algorithms will be done to compare algorithm performance. Third, stable-baseline3 will be used to validate both RL implementation correctness and performance. Fourth, K-fold cross validation will be used to measure performance of the CNN, with a 70\% training, 15\% validation, and 15\% test dataset split. Lastly, a confusion matrix will be constructed to determine which injuries are being misclassified by the CNN.
+
+\subsection*{Description of Novelty}
+The novel aspect of this project is that we are combining neural network techniques from two different sub-domains: reinforcement learning and image classification. They both contribute to the task of search and rescue but in different ways.
+
+\subsection*{Milestones}
+Milestone 1 {\small \it (March 2 - March 8)}: Create Gym Environment and Visual Simulation\\ 
+Milestone 2 {\small \it (March 9 - March 15)}: Implement RL algorithms and CNN\\
+Milestone 3 {\small \it (March 16 - March 22)}: Optimize Agent Policy\\
+Milestone 4 {\small \it (March 23 - March 29)}: Conduct Injury Classification Training\\
+Milestone 5 {\small \it (March 30 - April 4)}: Final Debugging and Integration of RL and CNN 
+\end{document}
