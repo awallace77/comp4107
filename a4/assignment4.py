@@ -21,7 +21,7 @@ class Linnaeus5Dataset(torch.utils.data.Dataset):
     """
   
 
-    def __init__(self, dataset_directory):
+    def __init__(self, dataset_directory, transform=None):
         """
             dataset_directory is the full path to the directory containing the dataset
         """
@@ -29,7 +29,7 @@ class Linnaeus5Dataset(torch.utils.data.Dataset):
             transforms.Resize(size=(32, 32)),
             transforms.ToTensor(),
             # transforms.Normalize([0.5] * 3, [0.5] * 3) # scale to [-1, 1] for all three channels
-        ])
+        ]) if transform is None else transform
 
         self.data = datasets.ImageFolder(root=dataset_directory, transform=data_transform)
         self.classes = self.data.class_to_idx
@@ -75,7 +75,7 @@ class Encoder(torch.nn.Module):
         return x
     
 class Decoder(torch.nn.Module):
-    def __init__(self, channels, hidden_channels=32, encoding_size=32):
+    def __init__(self, channels, hidden_channels=32, encoding_size=32, normalized=False):
         super(Decoder, self).__init__()
         
         hc = hidden_channels
@@ -94,13 +94,29 @@ class Decoder(torch.nn.Module):
             torch.nn.ReLU(),
             
             torch.nn.Conv2d(hc, channels, kernel_size=3, stride=1, padding=1),
-            torch.nn.Sigmoid()
+            (torch.nn.Tanh() if normalized else torch.nn.Sigmoid() )
             # use tanh if normalized to [-1, 1]
         )
         
     def forward(self, x):
         x = self.net(x)
         return x
+
+class AutoEncoderNorm(torch.nn.Module):
+    """
+        Defines an AutoEncoder
+    """
+    
+    def __init__(self, channel_in, hidden_channels=16, out_channels=32):
+        super(AutoEncoderNorm, self).__init__()
+        self.encoder = Encoder(channel_in, hidden_channels, out_channels)
+        self.decoder= Decoder(channel_in, hidden_channels, out_channels, normalized=True)
+        
+    def forward(self, x):
+        encoding = self.encoder(x)
+        x_hat = self.decoder(encoding)
+        return x_hat, encoding
+    
         
 class AutoEncoder(torch.nn.Module):
     """
@@ -116,8 +132,42 @@ class AutoEncoder(torch.nn.Module):
         encoding = self.encoder(x)
         x_hat = self.decoder(encoding)
         return x_hat, encoding
+   
+class AddGaussianNoise(object):
+    def __init__(self, mean=0., std=0.1):
+        self.mean = mean
+        self.std = std
+        
+    def __call__(self, tensor):
+        return tensor + torch.randn_like(tensor) * self.std + self.mean
     
-# 
+     
+def get_preprocessing(name):
+    if name == "Baseline":
+        return transforms.Compose([
+            transforms.ToTensor()
+        ])
+    
+    elif name == "Normalized":
+        return transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5]*3, std=[0.5]*3)
+        ])
+    
+    elif name == "Noisy":
+        return transforms.Compose([
+            transforms.ToTensor(),
+            AddGaussianNoise(0., 0.1)
+        ])
+    
+    elif name == "Normalized_Noisy":
+        return transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5]*3, std=[0.5]*3),
+            AddGaussianNoise(0., 0.1)
+        ])
+        
+        
 def linnaeus5_autoencoder(training_data_directory):
     """
         A function that creates a cnn autoencoder model for images from the Linnaeus 5 dataset
@@ -129,7 +179,7 @@ def linnaeus5_autoencoder(training_data_directory):
     # Define parameters
     batch_size = 64
     lr = 1e-4
-    epochs = 50
+    epochs = 20
     noise_scale = 0.3
    
     # Dataset: Split into 75% train, 25% validation 
@@ -148,13 +198,7 @@ def linnaeus5_autoencoder(training_data_directory):
     # Loss function and optimizer
     loss_func = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    
-    # Sanity Check
-    dataiter = train_loader._get_iterator()
-    train_images = dataiter._next_data()[0]
-    _, encoding = model(train_images)
-    print(f"Encoded shape: {encoding.shape}")
-    
+   
     # Training 
     for epoch in range(epochs):
         model.train()
@@ -183,7 +227,7 @@ def linnaeus5_autoencoder(training_data_directory):
             optimizer.step()
             
             total_loss += loss.item() * x.size(0)
-            total_samples += batch_size
+            total_samples += x.size(0) 
         
         avg_train_loss = total_loss / total_samples
         
@@ -199,7 +243,7 @@ def linnaeus5_autoencoder(training_data_directory):
                 loss = loss_func(x_hat, x)
                 
                 total_val_loss += loss.item() * x.size(0)
-                total_val_samples += batch_size 
+                total_val_samples += x.size(0)
         
         avg_val_loss = total_val_loss / total_val_samples
         
@@ -214,6 +258,193 @@ def linnaeus5_autoencoder(training_data_directory):
     # training_performance is the performance of the model on the training set
     # validation_performance is the performance of the model on the validation set
     return model, training_performance, validation_performance
+
+
+def train_autoencoder(training_data_directory, transform):
+    """
+        A function that creates a cnn autoencoder model for images from the Linnaeus 5 dataset
+    """
+    
+    # Device to use 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Define parameters
+    batch_size = 64
+    lr = 1e-4
+    epochs = 20
+    noise_scale = 0.3
+   
+    # Dataset: Split into 75% train, 25% validation 
+    dataset = Linnaeus5Dataset(training_data_directory, transform)
+    train_size = int(0.75 * dataset.__len__())
+    val_size = dataset.__len__() - train_size
+    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+    
+    # Data loaders
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+   
+    # Model 
+    model = AutoEncoder(channel_in=3, out_channels=512).to(device)
+
+    # Loss function and optimizer
+    loss_func = torch.nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    
+    epoch_train_loss = []
+    epoch_val_loss = []
+    # Training 
+    for epoch in range(epochs):
+        model.train()
+        
+        total_loss = 0
+        total_samples = 0
+        
+        for _, data in enumerate(train_loader):
+           
+            # Get input 
+            x = data[0].to(device)
+            
+            # Add optional noise to image
+            # random_sample = (torch.bernoulli((1 - noise_scale) * torch.ones_like(x)) * 2) - 1
+            # noisy_x = random_sample * x
+            
+            # forward pass
+            x_hat, encoding = model(x)
+
+            # Calculate loss
+            loss = loss_func(x_hat, x)
+            
+            # Step
+            model.zero_grad()
+            loss.backward()
+            optimizer.step()
+            
+            total_loss += loss.item() * x.size(0)
+            total_samples += x.size(0) 
+        
+        avg_train_loss = total_loss / total_samples
+        epoch_train_loss.append(avg_train_loss)
+        
+        # Validate 
+        total_val_loss = 0
+        total_val_samples = 0
+        model.eval()
+        with torch.no_grad():
+            for data in val_loader:
+                x = data[0].to(device)
+                x_hat, _ = model(x)
+                
+                loss = loss_func(x_hat, x)
+                
+                total_val_loss += loss.item() * x.size(0)
+                total_val_samples += x.size(0)
+        
+        avg_val_loss = total_val_loss / total_val_samples
+        epoch_val_loss.append(avg_val_loss)
+        
+        print(f"Epoch {epoch+1}/{epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+        
+    # -- End of Training --
+    
+    
+    # model is a trained cnn autoencoder model for this task
+    # training_performance is the performance of the model on the training set
+    # validation_performance is the performance of the model on the validation set
+    return epoch_train_loss, epoch_val_loss
+
+def train_autoencoder_norm(training_data_directory, transform):
+    """
+        A function that creates a cnn autoencoder model for images from the Linnaeus 5 dataset
+    """
+    
+    # Device to use 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Define parameters
+    batch_size = 64
+    lr = 1e-4
+    epochs = 20
+    noise_scale = 0.3
+   
+    # Dataset: Split into 75% train, 25% validation 
+    dataset = Linnaeus5Dataset(training_data_directory, transform)
+    train_size = int(0.75 * dataset.__len__())
+    val_size = dataset.__len__() - train_size
+    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+    
+    # Data loaders
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+   
+    # Model 
+    model = AutoEncoderNorm(channel_in=3, out_channels=512).to(device)
+
+    # Loss function and optimizer
+    loss_func = torch.nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    
+    epoch_train_loss = []
+    epoch_val_loss = []
+    # Training 
+    for epoch in range(epochs):
+        model.train()
+        
+        total_loss = 0
+        total_samples = 0
+        
+        for _, data in enumerate(train_loader):
+           
+            # Get input 
+            x = data[0].to(device)
+            
+            # Add optional noise to image
+            # random_sample = (torch.bernoulli((1 - noise_scale) * torch.ones_like(x)) * 2) - 1
+            # noisy_x = random_sample * x
+            
+            # forward pass
+            x_hat, encoding = model(x)
+
+            # Calculate loss
+            loss = loss_func(x_hat, x)
+            
+            # Step
+            model.zero_grad()
+            loss.backward()
+            optimizer.step()
+            
+            total_loss += loss.item() * x.size(0)
+            total_samples += x.size(0) 
+        
+        avg_train_loss = total_loss / total_samples
+        epoch_train_loss.append(avg_train_loss)
+        
+        # Validate 
+        total_val_loss = 0
+        total_val_samples = 0
+        model.eval()
+        with torch.no_grad():
+            for data in val_loader:
+                x = data[0].to(device)
+                x_hat, _ = model(x)
+                
+                loss = loss_func(x_hat, x)
+                
+                total_val_loss += loss.item() * x.size(0)
+                total_val_samples += x.size(0)
+        
+        avg_val_loss = total_val_loss / total_val_samples
+        epoch_val_loss.append(avg_val_loss)
+        
+        print(f"Epoch {epoch+1}/{epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+        
+    # -- End of Training --
+    
+    
+    # model is a trained cnn autoencoder model for this task
+    # training_performance is the performance of the model on the training set
+    # validation_performance is the performance of the model on the validation set
+    return epoch_train_loss, epoch_val_loss
 
 def linnaeus5_autoencoder_test(model, test_data_directory):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -241,6 +472,49 @@ def linnaeus5_autoencoder_test(model, test_data_directory):
     test_mse = total_mse / num_batches
     return test_mse 
 
+def run_experiments(training_data_directory):
+    experiments = ["Baseline", "Noisy"]
+    experiments2 = ["Normalized","Normalized_Noisy"]
+
+    results = {}
+
+    for exp in experiments:
+        print(f"\nRunning experiment: {exp}")
+    
+        transform = get_preprocessing(exp)
+        train_loss, val_loss = train_autoencoder(training_data_directory, transform)
+    
+        results[exp] = {
+            "train": train_loss,
+            "val": val_loss
+        }
+    
+    for exp in experiments2:
+        print(f"\nRunning experiment2: {exp}")
+    
+        transform = get_preprocessing(exp)
+        train_loss, val_loss = train_autoencoder_norm(training_data_directory, transform)
+    
+        results[exp] = {
+            "train": train_loss,
+            "val": val_loss
+        }
+     
+        
+    for exp in results:
+        plt.figure()
+    
+        plt.plot(results[exp]["train"], label="Train")
+        plt.plot(results[exp]["val"], label="Validation")
+        
+        plt.title(f"{exp} Performance")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss (MSE)")
+        plt.legend()
+        # plt.show()
+        plt.savefig(f"{exp}_performance.png")
+        plt.close()
+    
 if __name__ == "__main__":
 
     # NOTE: Update this to the location of training data
@@ -269,6 +543,8 @@ if __name__ == "__main__":
     plt.axis('off')
     plt.show()
     ''' 
+    
+    run_experiments(training_data_directory=train_directory)
     
     # Train model
     model, training_performance, validation_performance = linnaeus5_autoencoder(train_directory)
