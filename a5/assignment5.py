@@ -40,21 +40,30 @@ class FinancialNewsDataset(torch.utils.data.Dataset):
         quotechar='"',
         encoding='latin1' 
       )
-      
+    
     # Clean headlines
     self.data['headline'] = self.data['headline'].apply(self._clean_text)
     
     # Map labels to index
     self.data['label_index'] = self.data['sentiment'].map(self.mapping)
-    
-    # Tokenize
+   
+    # Get word counts 
     all_words = [word for headline in self.data['headline'] for word in headline.split()]
     counts = Counter(all_words)
     vocab = sorted(counts, key=counts.get, reverse=True)
-    vocab_to_int = {word: ii for ii, word in enumerate(vocab, 1)}
+    vocab_to_int = {word: ii+1 for ii, word in enumerate(vocab)}
+    vocab_to_int["<UNK>"] = 0
+    
+    # Tokenize
     def _tokenize(text):
-      return [vocab_to_int[word] for word in text.split()] 
+      return [vocab_to_int.get(word, 0) for word in text.split()]
     self.data['tokenized'] = self.data['headline'].apply(_tokenize)
+    
+    # Pad/crop sequences
+    self.max_len = int(self.data['tokenized'].apply(len).quantile(0.95))
+    self.data['padded'] = self.data['tokenized'].apply(
+      lambda x: self._pad_sequence(x, self.max_len)
+    )
     
     # Filter rows
     if rows is not None:
@@ -75,11 +84,11 @@ class FinancialNewsDataset(torch.utils.data.Dataset):
     
     # x is one sample of data (i.e. one headline)
     # y is the label associated with the sample (i.e. its sentiment)
-    x = self.data.loc[index, 'tokenized'] 
-    x = torch.tensor(x, dtype=torch.float32)
+    x = self.data.loc[index, 'padded'] 
+    x = torch.tensor(x, dtype=torch.long)
     
     y = self._one_hot_label(self.data.loc[index, 'sentiment'])
-    y = torch.tensor(y, dtype=torch.float32)
+    y = torch.tensor(y, dtype=torch.long)
     
     return x, y
   
@@ -87,8 +96,18 @@ class FinancialNewsDataset(torch.utils.data.Dataset):
     # Lowercase
     text = text.lower()
     
-    # Remove punctuation 
-    text = ''.join([c for c in text if c not in punctuation])
+    # Replace hyphens with space 
+    text = re.sub(r'-', ' ', text)
+    
+    # Keep decimal numbers
+    text = re.sub(r'(\d)\.(\d)', r'\1.\2', text)
+
+    # Normalize percentages
+    text = re.sub(r'(\d+)\s*%', r'\1 percent', text)
+
+    # Normalize financial units
+    text = re.sub(r'\bmn\b', 'million', text)
+    text = re.sub(r'\bbn\b', 'billion', text)
     
     # Remove non-alphanumeric characters (keep spaces)
     text = re.sub(r'[^a-z0-9\s]', '', text)
@@ -101,6 +120,11 @@ class FinancialNewsDataset(torch.utils.data.Dataset):
   def _one_hot_label(self, label):
     index = self.mapping[label]
     return np.eye(len(self.mapping))[index]
+  
+  def _pad_sequence(self, seq, max_len):
+    if len(seq) > max_len:
+        return seq[:max_len]  # truncate
+    return seq + [0] * (max_len - len(seq))
   
     
 
@@ -133,4 +157,9 @@ if __name__ == "__main__":
   
   filepath = "/home/andrew/w26/comp4107/a5/all-data.csv"
   ds = FinancialNewsDataset(filepath, [1,2,3])
-  print(ds.__getitem__(0))
+  print(ds[0][0])
+  print(len(ds[0][0]))
+  print(ds[1][0])
+  print(len(ds[1][0]))
+  print(ds[2][0])
+  print(len(ds[2][0]))
