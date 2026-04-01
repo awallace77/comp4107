@@ -2,22 +2,30 @@
 import torch
 import numpy as np
 import pandas as pd
-from string import punctuation
 import re
 from collections import Counter
+from torch.utils.data import DataLoader
+import random
 
-# PyTorch dataset for the financial news dataset
 class FinancialNewsDataset(torch.utils.data.Dataset):
+  """ PyTorch dataset for the financial news dataset """
   
   mapping = {
     "negative": 0,
     "neutral": 1,
     "positive": 2
   }
+  
+  shared_vocab_to_int = None
+  shared_max_len = None
 
   def __init__(self, filepath, rows):
-    # filepath is a full file path to the file containing the data
-    # rows is the rows from the file to use
+    """
+      Parameters:
+        filepath: is a full file path to the file containing the data
+        rows: is the rows from the file to use
+    """
+    
     self.path = filepath
     self.num_classes = 3
     
@@ -48,19 +56,32 @@ class FinancialNewsDataset(torch.utils.data.Dataset):
     self.data['label_index'] = self.data['sentiment'].map(self.mapping)
    
     # Get word counts 
-    all_words = [word for headline in self.data['headline'] for word in headline.split()]
-    counts = Counter(all_words)
-    vocab = sorted(counts, key=counts.get, reverse=True)
-    vocab_to_int = {word: ii+1 for ii, word in enumerate(vocab)}
-    vocab_to_int["<UNK>"] = 0
+    if FinancialNewsDataset.shared_vocab_to_int is None:
+      all_words = [word for headline in self.data['headline'] for word in headline.split()]
+      counts = Counter(all_words)
+      vocab = sorted(counts, key=counts.get, reverse=True)
+
+      vocab_to_int = {word: ii+1 for ii, word in enumerate(vocab)}
+      vocab_to_int["<PAD>"] = 0
+      vocab_to_int["<UNK>"] = len(vocab_to_int) # append to end
+      FinancialNewsDataset.shared_vocab_to_int = vocab_to_int
+    
+    self.vocab_to_int = FinancialNewsDataset.shared_vocab_to_int
+    self.vocab_size = len(self.vocab_to_int)
     
     # Tokenize
     def _tokenize(text):
-      return [vocab_to_int.get(word, 0) for word in text.split()]
+      return [self.vocab_to_int.get(word, self.vocab_to_int["<UNK>"]) for word in text.split()]
     self.data['tokenized'] = self.data['headline'].apply(_tokenize)
     
+    # Define max_len of a sequence
+    if FinancialNewsDataset.shared_max_len is None:
+      FinancialNewsDataset.shared_max_len = int(
+        self.data['tokenized'].apply(len).quantile(0.95)
+      )
+    self.max_len = FinancialNewsDataset.shared_max_len
+     
     # Pad/crop sequences
-    self.max_len = int(self.data['tokenized'].apply(len).quantile(0.95))
     self.data['padded'] = self.data['tokenized'].apply(
       lambda x: self._pad_sequence(x, self.max_len)
     )
@@ -74,20 +95,25 @@ class FinancialNewsDataset(torch.utils.data.Dataset):
     # Return nothing    
 
   def __len__(self):
-    # num_samples is the total number of samples in the dataset
+    """ num_samples is the total number of samples in the dataset """
     num_samples = len(self.data)
     return num_samples
 
 
   def __getitem__(self, index):
-    # index is the index of the sample to be retrieved
+    """
+      Parameters:
+        index: is the index of the sample to be retrieved
+      Returns:
+        x: is one sample of data (i.e. one headline)
+        y: is the label associated with the sample (i.e. its sentiment)
+    """
     
-    # x is one sample of data (i.e. one headline)
-    # y is the label associated with the sample (i.e. its sentiment)
     x = self.data.loc[index, 'padded'] 
     x = torch.tensor(x, dtype=torch.long)
     
-    y = self._one_hot_label(self.data.loc[index, 'sentiment'])
+    # y = self._one_hot_label(self.data.loc[index, 'sentiment'])
+    y = self.data.loc[index, 'label_index']
     y = torch.tensor(y, dtype=torch.long)
     
     return x, y
@@ -125,19 +151,106 @@ class FinancialNewsDataset(torch.utils.data.Dataset):
     if len(seq) > max_len:
         return seq[:max_len]  # truncate
     return seq + [0] * (max_len - len(seq))
-  
-    
 
 
-# A function that creates an rnn model for the financial news dataset
 def financial_news_rnn_model(data_filepath, training_rows, validation_rows):
-  # data_filepath is a full file path to the file containing the data
-  # training_rows is the rows from the dataset to use for training
-  # validation_rows is the rows from the dataset to use for validation
+  """
+    A function that creates an rnn model for the financial news dataset
+    Parameters:
+      data_filepath: is a full file path to the file containing the data
+      training_rows: is the rows from the dataset to use for training
+      validation_rows: is the rows from the dataset to use for validation
+    Returns:
+      model: is a trained rnn model for this task
+      training_performance: is the performance of the model on the training set
+      validation_performance: is the performance of the model on the validation set
+  """
+  
+  train_dataset = FinancialNewsDataset(data_filepath, training_rows)
+  val_dataset = FinancialNewsDataset(data_filepath, validation_rows)
+  
+  vocab_size = train_dataset.vocab_size
+  print(f"Vocab size: {vocab_size}")
+  
+  train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+  val_loader = DataLoader(val_dataset, batch_size=64)
+  
+  class RNN(torch.nn.Module):
+    def __init__(self, vocab_size, embed_dim=50, hidden_dim=64, output_dim=3):
+      super().__init__()
+      self.embedding = torch.nn.Embedding(vocab_size, embed_dim, padding_idx=0)
+      self.rnn = torch.nn.GRU(embed_dim, hidden_dim, batch_first=True)
+      self.dropout = torch.nn.Dropout(0.5)
+      self.fc = torch.nn.Linear(hidden_dim, output_dim)
+      
+    def forward(self, x):
+      x = self.embedding(x)
+      out, _ = self.rnn(x)
+      out = self.dropout(out.mean(dim=1))
+      out = self.fc(out)
+      return out
+    
+  def train_epoch(model, loader, optimizer, criterion, device):
+    model.train()
+    total_loss = 0
+    
+    for x_batch, y_batch in loader:
+      x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+      
+      optimizer.zero_grad()
+      outputs = model(x_batch)
+      loss = criterion(outputs, y_batch)
+      loss.backward()
+      optimizer.step()
+      
+      total_loss += loss.item()
+      
+    return total_loss / len(loader)
 
-  # model is a trained rnn model for this task
-  # training_performance is the performance of the model on the training set
-  # validation_performance is the performance of the model on the validation set
+  
+  def evaluate(model, loader, criterion, device):
+    model.eval()
+    total_loss = 0
+    correct = 0
+    total = 0
+    
+    with torch.no_grad():
+      for x_batch, y_batch in loader:
+        x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+        outputs = model(x_batch)
+        loss = criterion(outputs, y_batch)
+        total_loss += loss.item()
+    
+        preds = outputs.argmax(dim=1) 
+        correct += (preds == y_batch).sum().item()
+        total += y_batch.size(0)
+    
+    return total_loss / len(loader), correct / total
+ 
+   
+  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+  
+  model = RNN(vocab_size=vocab_size)
+  optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+  criterion = torch.nn.CrossEntropyLoss()
+  
+  model.to(device)
+  
+  epochs = 100
+  all_train_losses = []
+  all_val_losses = []
+  for epoch in range(epochs):
+    train_loss = train_epoch(model, train_loader, optimizer, criterion, device)
+    val_loss, val_acc = evaluate(model, val_loader, criterion, device)
+    
+    all_train_losses.append(train_loss)
+    all_val_losses.append(val_loss)
+    
+    print(f"EPOCH {epoch + 1}: Train loss={train_loss:.4f}, Val loss={val_loss:.4f}, Val accuracy={val_acc:.4f}")
+    
+  training_performance = np.mean(all_train_losses)
+  validation_performance = np.mean(all_val_losses)
+  
   return model, training_performance, validation_performance
 
 
@@ -156,6 +269,17 @@ def financial_news_attention_model(data_filepath, training_rows, validation_rows
 if __name__ == "__main__":
   
   filepath = "/home/andrew/w26/comp4107/a5/all-data.csv"
+    
+  num_rows = FinancialNewsDataset(filepath, None).__len__()
+  all_rows = list(range(num_rows))
+  random.shuffle(all_rows)
+  
+  # Split into 75% for train and 25% for validation
+  split = int(num_rows * 0.75) 
+  train_rows = all_rows[:split]
+  val_rows = all_rows[split:]
+  
+  # Sanity check 
   ds = FinancialNewsDataset(filepath, [1,2,3])
   print(ds[0][0])
   print(len(ds[0][0]))
@@ -163,3 +287,8 @@ if __name__ == "__main__":
   print(len(ds[1][0]))
   print(ds[2][0])
   print(len(ds[2][0]))
+  
+  # Evaluate RNN
+  model, train_performance, val_performance = financial_news_rnn_model(filepath, train_rows, val_rows)
+  print(f"Final train performance: {train_performance}")
+  print(f"Final val performance: {val_performance}")
