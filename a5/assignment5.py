@@ -226,7 +226,6 @@ def financial_news_rnn_model(data_filepath, training_rows, validation_rows):
         total += y_batch.size(0)
     
     return total_loss / len(loader), correct / total
- 
    
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
   
@@ -236,7 +235,7 @@ def financial_news_rnn_model(data_filepath, training_rows, validation_rows):
   
   model.to(device)
   
-  epochs = 100
+  epochs = 50
   all_train_losses = []
   all_val_losses = []
   for epoch in range(epochs):
@@ -254,15 +253,50 @@ def financial_news_rnn_model(data_filepath, training_rows, validation_rows):
   return model, training_performance, validation_performance
 
 
-# A function that creates an attention-based model for the financial news dataset
+# 
 def financial_news_attention_model(data_filepath, training_rows, validation_rows):
-  # data_filepath is a full file path to the file containing the data
-  # training_rows is the rows from the dataset to use for training
-  # validation_rows is the rows from the dataset to use for validation
+  """
+    A function that creates an attention-based model for the financial news dataset
+    Parameters:
+      data_filepath: is a full file path to the file containing the data
+      training_rows: is the rows from the dataset to use for training
+      validation_rows: is the rows from the dataset to use for validation
+    Returns:
+      model: is a trained attention-based model for this task
+      training_performance: is the performance of the model on the training set
+      validation_performance: is the performance of the model on the validation set 
+  """
+  # class RNN(torch.nn.Module):
+     
+  #   def __init__(self, vocab_size, embed_dim=50, hidden_dim=64, output_dim=3):
+  #     super().__init__()
+  #     self.embedding = torch.nn.Embedding(vocab_size, embed_dim, padding_idx=0)
+  #     self.rnn = torch.nn.GRU(embed_dim, hidden_dim, batch_first=True)
+  #     self.attention = torch.nn.Linear(hidden_dim, 1)
+  #     self.dropout = torch.nn.Dropout(0.5)
+  #     self.fc = torch.nn.Linear(hidden_dim, output_dim)
+      
+  #   def forward(self, x):
+  #     x = self.embedding(x)
+  #     out, _ = self.rnn(x)
+      
+  #     # Add attention layer from output of RNN before passing to output layer
+      
+  #     # Calculate scores for each hidden state (seq_len, hidden_dim)
+  #     # (batch_size, seq_len, 1)
+  #     scores = self.attention(out) 
+  #     scores = scores.squeeze(-1) # (batch_size, seq_len)
+      
+  #     # Get the weights alpha_{i,j} from scores using softmax
+  #     weights = torch.softmax(scores, dim=1)
+  #     context = torch.bmm(weights.unsqueeze(1), out) # (batch_size, 1, hidden_dim )
+  #     context = context.squeeze(1) # (batch_size, hidden_dim)
+      
+  #     out = self.dropout(context)
+  #     out = self.fc(out)
+  #     return out
 
-  # model is a trained attention-based model for this task
-  # training_performance is the performance of the model on the training set
-  # validation_performance is the performance of the model on the validation set
+  
   return model, training_performance, validation_performance
 
 
@@ -274,12 +308,17 @@ if __name__ == "__main__":
   all_rows = list(range(num_rows))
   random.shuffle(all_rows)
   
-  # Split into 75% for train and 25% for validation
+  # Split into 75% for train and 20% for validation, 5% for visualization
   split = int(num_rows * 0.75) 
+  num_rows2 = num_rows - split
+  split2 = int(num_rows2 * 0.95) 
+  print(split, split2)
   train_rows = all_rows[:split]
-  val_rows = all_rows[split:]
+  val_rows = all_rows[split:split + split2]
+  val_viz_rows = all_rows[split + split2:]
   
   # Sanity check 
+  '''
   ds = FinancialNewsDataset(filepath, [1,2,3])
   print(ds[0][0])
   print(len(ds[0][0]))
@@ -287,8 +326,38 @@ if __name__ == "__main__":
   print(len(ds[1][0]))
   print(ds[2][0])
   print(len(ds[2][0]))
+  '''
   
   # Evaluate RNN
   model, train_performance, val_performance = financial_news_rnn_model(filepath, train_rows, val_rows)
   print(f"Final train performance: {train_performance}")
   print(f"Final val performance: {val_performance}")
+  
+  def visualize_preds(model, loader, device):
+    model.eval()
+    all_preds = []
+    all_labels = []
+    print("visualize preds")
+    
+    with torch.no_grad():
+      for x_batch, y_batch in loader:
+        print(x_batch)
+        x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+        outputs = model(x_batch)
+        preds = outputs.argmax(dim=1)
+        all_preds.extend(preds.cpu().numpy()) # predictions
+        all_labels.extend(y_batch.cpu().numpy()) # labels
+        
+    index_to_sentiment = {0: "negative", 1: "neutral", 2: "positive"}
+    pred_labels = [index_to_sentiment[p] for p in all_preds]
+    true_labels = [index_to_sentiment[t] for t in all_labels]
+
+    for pred, true in zip(pred_labels, true_labels):
+      print(f"Predicted: {pred}, True: {true}")
+  
+  ds = FinancialNewsDataset(filepath, val_viz_rows)
+  val_viz_loader = DataLoader(ds, batch_size=64) 
+  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+  visualize_preds(model, val_viz_loader, device)
+        
+ 
