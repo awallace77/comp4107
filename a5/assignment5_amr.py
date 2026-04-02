@@ -253,7 +253,6 @@ def financial_news_rnn_model(data_filepath, training_rows, validation_rows):
   return model, training_performance, validation_performance
 
 
-# 
 def financial_news_attention_model(data_filepath, training_rows, validation_rows):
   """
     A function that creates an attention-based model for the financial news dataset
@@ -266,37 +265,111 @@ def financial_news_attention_model(data_filepath, training_rows, validation_rows
       training_performance: is the performance of the model on the training set
       validation_performance: is the performance of the model on the validation set 
   """
-  # class RNN(torch.nn.Module):
-     
-  #   def __init__(self, vocab_size, embed_dim=50, hidden_dim=64, output_dim=3):
-  #     super().__init__()
-  #     self.embedding = torch.nn.Embedding(vocab_size, embed_dim, padding_idx=0)
-  #     self.rnn = torch.nn.GRU(embed_dim, hidden_dim, batch_first=True)
-  #     self.attention = torch.nn.Linear(hidden_dim, 1)
-  #     self.dropout = torch.nn.Dropout(0.5)
-  #     self.fc = torch.nn.Linear(hidden_dim, output_dim)
-      
-  #   def forward(self, x):
-  #     x = self.embedding(x)
-  #     out, _ = self.rnn(x)
-      
-  #     # Add attention layer from output of RNN before passing to output layer
-      
-  #     # Calculate scores for each hidden state (seq_len, hidden_dim)
-  #     # (batch_size, seq_len, 1)
-  #     scores = self.attention(out) 
-  #     scores = scores.squeeze(-1) # (batch_size, seq_len)
-      
-  #     # Get the weights alpha_{i,j} from scores using softmax
-  #     weights = torch.softmax(scores, dim=1)
-  #     context = torch.bmm(weights.unsqueeze(1), out) # (batch_size, 1, hidden_dim )
-  #     context = context.squeeze(1) # (batch_size, hidden_dim)
-      
-  #     out = self.dropout(context)
-  #     out = self.fc(out)
-  #     return out
 
-  
+  train_dataset = FinancialNewsDataset(data_filepath, training_rows)
+  val_dataset = FinancialNewsDataset(data_filepath, validation_rows)
+
+  vocab_size = train_dataset.vocab_size
+  print(f"Vocab size: {vocab_size}")
+
+  train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+  val_loader = DataLoader(val_dataset, batch_size=64)
+
+  class AttentionRNN(torch.nn.Module):
+    def __init__(self, vocab_size, embed_dim=50, hidden_dim=64, output_dim=3):
+      super().__init__()
+      self.embedding = torch.nn.Embedding(vocab_size, embed_dim, padding_idx=0)
+      self.rnn = torch.nn.GRU(embed_dim, hidden_dim, batch_first=True)
+      # Attention layer: maps each hidden state to a scalar score
+      self.attention = torch.nn.Linear(hidden_dim, 1)
+      self.dropout = torch.nn.Dropout(0.5)
+      self.fc = torch.nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, x):
+      # Embed input tokens: (batch_size, seq_len, embed_dim)
+      x = self.embedding(x)
+
+      # Run GRU: out is (batch_size, seq_len, hidden_dim)
+      out, _ = self.rnn(x)
+
+      # Calculate attention scores for each hidden state
+      # self.attention(out) -> (batch_size, seq_len, 1)
+      scores = self.attention(out)
+      scores = scores.squeeze(-1)             # (batch_size, seq_len)
+
+      # Convert scores to attention weights via softmax
+      weights = torch.softmax(scores, dim=1)  # (batch_size, seq_len)
+
+      # Compute context vector as weighted sum of hidden states
+      # weights.unsqueeze(1) -> (batch_size, 1, seq_len)
+      # bmm result -> (batch_size, 1, hidden_dim)
+      context = torch.bmm(weights.unsqueeze(1), out)
+      context = context.squeeze(1)            # (batch_size, hidden_dim)
+
+      # Apply dropout and classify
+      out = self.dropout(context)
+      out = self.fc(out)
+      return out
+
+  def train_epoch(model, loader, optimizer, criterion, device):
+    model.train()
+    total_loss = 0
+
+    for x_batch, y_batch in loader:
+      x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+
+      optimizer.zero_grad()
+      outputs = model(x_batch)
+      loss = criterion(outputs, y_batch)
+      loss.backward()
+      optimizer.step()
+
+      total_loss += loss.item()
+
+    return total_loss / len(loader)
+
+  def evaluate(model, loader, criterion, device):
+    model.eval()
+    total_loss = 0
+    correct = 0
+    total = 0
+
+    with torch.no_grad():
+      for x_batch, y_batch in loader:
+        x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+        outputs = model(x_batch)
+        loss = criterion(outputs, y_batch)
+        total_loss += loss.item()
+
+        preds = outputs.argmax(dim=1)
+        correct += (preds == y_batch).sum().item()
+        total += y_batch.size(0)
+
+    return total_loss / len(loader), correct / total
+
+  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+  model = AttentionRNN(vocab_size=vocab_size)
+  optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+  criterion = torch.nn.CrossEntropyLoss()
+
+  model.to(device)
+
+  epochs = 50
+  all_train_losses = []
+  all_val_losses = []
+  for epoch in range(epochs):
+    train_loss = train_epoch(model, train_loader, optimizer, criterion, device)
+    val_loss, val_acc = evaluate(model, val_loader, criterion, device)
+
+    all_train_losses.append(train_loss)
+    all_val_losses.append(val_loss)
+
+    print(f"EPOCH {epoch + 1}: Train loss={train_loss:.4f}, Val loss={val_loss:.4f}, Val accuracy={val_acc:.4f}")
+
+  training_performance = np.mean(all_train_losses)
+  validation_performance = np.mean(all_val_losses)
+
   return model, training_performance, validation_performance
 
 
@@ -359,5 +432,16 @@ if __name__ == "__main__":
   val_viz_loader = DataLoader(ds, batch_size=64) 
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
   visualize_preds(model, val_viz_loader, device)
-        
- 
+
+
+  # Quick test with just 200 rows
+  test_rows = list(range(200))
+
+  model, train_perf, val_perf = financial_news_attention_model(
+      filepath,
+      training_rows=test_rows[:150],
+      validation_rows=test_rows[150:]
+  )
+
+  print(f"Attention model train performance: {train_perf:.4f}")
+  print(f"Attention model val performance: {val_perf:.4f}")
