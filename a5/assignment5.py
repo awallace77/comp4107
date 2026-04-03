@@ -177,13 +177,13 @@ def financial_news_rnn_model(data_filepath, training_rows, validation_rows):
   val_loader = DataLoader(val_dataset, batch_size=64)
   
   class RNN(torch.nn.Module):
-    def __init__(self, vocab_size, embed_dim=50, hidden_dim=64, output_dim=3):
+    def __init__(self, vocab_size, embed_dim=32, hidden_dim=32, output_dim=3):
       super().__init__()
       self.embedding = torch.nn.Embedding(vocab_size, embed_dim, padding_idx=0)
       self.embedding_dropout = torch.nn.Dropout(0.3)
-      self.rnn = torch.nn.GRU(embed_dim, hidden_dim, batch_first=True)
+      self.rnn = torch.nn.GRU(embed_dim, hidden_dim, batch_first=True, num_layers=2, bidirectional=True, dropout=0.3)
       self.dropout = torch.nn.Dropout(0.5)
-      self.fc = torch.nn.Linear(hidden_dim, output_dim)
+      self.fc = torch.nn.Linear(hidden_dim * 2, output_dim) # * 2 b/c bidirectional
       
     def forward(self, x):
       x = self.embedding(x)
@@ -196,6 +196,8 @@ def financial_news_rnn_model(data_filepath, training_rows, validation_rows):
   def train_epoch(model, loader, optimizer, criterion, device):
     model.train()
     total_loss = 0
+    correct = 0
+    total = 0
     
     for x_batch, y_batch in loader:
       x_batch, y_batch = x_batch.to(device), y_batch.to(device)
@@ -208,7 +210,13 @@ def financial_news_rnn_model(data_filepath, training_rows, validation_rows):
       
       total_loss += loss.item()
       
-    return total_loss / len(loader)
+      preds = outputs.argmax(dim=1)
+      correct += (preds == y_batch).sum().item()
+      total += y_batch.size(0)
+     
+    avg_loss = total_loss / len(loader)
+    accuracy = correct / total
+    return avg_loss, accuracy
 
   
   def evaluate(model, loader, criterion, device):
@@ -243,29 +251,41 @@ def financial_news_rnn_model(data_filepath, training_rows, validation_rows):
   epochs = 50
   patience = 5
   counter = 0
+  
   all_train_losses = []
+  all_train_acc = []
   all_val_losses = []
+  all_val_acc = []
+  best_model_val_loss = float('inf')
+  best_model_val_acc = float('inf')
+  
   for epoch in range(epochs):
-    train_loss = train_epoch(model, train_loader, optimizer, criterion, device)
+    train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion, device)
     val_loss, val_acc = evaluate(model, val_loader, criterion, device)
     
     all_train_losses.append(train_loss)
-    all_val_losses.append(val_loss)
+    all_train_acc.append(train_acc)
+    all_val_losses.append(val_loss) 
+    all_val_acc.append(val_acc)
     
     # Early stopping & save best model
     if val_loss < best_val_loss:
       best_val_loss = val_loss
       counter = 0
       best_model = copy.deepcopy(model.state_dict())
+      best_model_val_loss = val_loss
+      best_model_val_acc = val_acc
     else:
       counter += 1
       if counter >= patience:
         break
     
-    print(f"EPOCH {epoch + 1}: Train loss={train_loss:.4f}, Val loss={val_loss:.4f}, Val accuracy={val_acc:.4f}")
+    print(f"EPOCH {epoch + 1}:")
+    print(f"  Train loss = {train_loss:.4f} | Train accuracy = {train_acc:.4f}")
+    print(f"  Val   loss = {val_loss:.4f} | Val   accuracy = {val_acc:.4f}")
     
-  training_performance = np.mean(all_train_losses)
-  validation_performance = np.mean(all_val_losses)
+  training_performance = (np.min(all_train_losses), np.max(all_train_acc))
+  validation_performance = (best_model_val_loss, best_model_val_acc)
   model.load_state_dict(best_model) # restore the best model
   
   return model, training_performance, validation_performance
@@ -311,7 +331,7 @@ def financial_news_attention_model(data_filepath, training_rows, validation_rows
       
   class AttentionRNN(torch.nn.Module):
      
-    def __init__(self, vocab_size, embed_dim=50, hidden_dim=64, output_dim=3, n_attention=2):
+    def __init__(self, vocab_size, embed_dim=32, hidden_dim=32, output_dim=3, n_attention=2):
       super().__init__()
       
       # Embedding layer
@@ -319,25 +339,29 @@ def financial_news_attention_model(data_filepath, training_rows, validation_rows
       self.embedding_dropout = torch.nn.Dropout(0.3)
       
       # RNN
-      self.rnn = torch.nn.GRU(embed_dim, hidden_dim, batch_first=True)
+      self.rnn = torch.nn.GRU(embed_dim, hidden_dim, batch_first=True, num_layers=2, bidirectional=True, dropout=0.3)
       
       # Attention layers
       self.attentions = torch.nn.ModuleList(
-        [AdditiveAttention(hidden_dim) for _ in range(n_attention)]
+        [AdditiveAttention(hidden_dim * 2) for _ in range(n_attention)]
       )
       
       # Dropout
       self.dropout = torch.nn.Dropout(0.5)
       
       # Fully connected layer
-      self.fc = torch.nn.Linear(hidden_dim * n_attention, output_dim)
+      self.fc = torch.nn.Linear(hidden_dim * 2 * n_attention, output_dim)
       
     def forward(self, x):
       x = self.embedding(x)
       x = self.embedding_dropout(x)
       h_enc, h_T = self.rnn(x)
       h_enc = self.dropout(h_enc) 
-      h_last = h_T.squeeze(0)
+      
+      h_forward = h_T[-2]
+      h_backward = h_T[-1]
+      h_last = torch.cat((h_forward, h_backward), dim=1)
+      # h_last = h_T.squeeze(0)
       
       # Pass through attention layers 
       context_vectors = []
@@ -356,6 +380,8 @@ def financial_news_attention_model(data_filepath, training_rows, validation_rows
   def train_epoch(model, loader, optimizer, criterion, device):
     model.train()
     total_loss = 0
+    correct = 0
+    total = 0
     
     for x_batch, y_batch in loader:
       x_batch, y_batch = x_batch.to(device), y_batch.to(device)
@@ -368,7 +394,14 @@ def financial_news_attention_model(data_filepath, training_rows, validation_rows
       
       total_loss += loss.item()
       
-    return total_loss / len(loader)
+      preds = outputs.argmax(dim=1)
+      correct += (preds == y_batch).sum().item()
+      total += y_batch.size(0)
+     
+    avg_loss = total_loss / len(loader)
+    accuracy = correct / total
+      
+    return avg_loss, accuracy
 
   
   def evaluate(model, loader, criterion, device):
@@ -406,35 +439,48 @@ def financial_news_attention_model(data_filepath, training_rows, validation_rows
   
   model.to(device)
   best_model = copy.deepcopy(model.state_dict())
+  best_val_loss = float('inf')
   
   epochs = 50
   patience = 5
   counter = 0
+  
   all_train_losses = []
+  all_train_acc = []
   all_val_losses = []
+  all_val_acc= []
+  
+  best_model_val_loss = float('inf')
+  best_model_val_acc = float('inf')
+  
   for epoch in range(epochs):
-    train_loss = train_epoch(model, train_loader, optimizer, criterion, device)
+    train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion, device)
     val_loss, val_acc = evaluate(model, val_loader, criterion, device)
     
     all_train_losses.append(train_loss)
+    all_train_acc.append(train_acc)
     all_val_losses.append(val_loss)
+    all_val_acc.append(val_acc)
     
     # Early stopping & save best model
     if val_loss < best_val_loss:
       best_val_loss = val_loss
       counter = 0
       best_model = copy.deepcopy(model.state_dict())
+      best_model_val_loss = val_loss
+      best_model_val_acc = val_acc
     else:
       counter += 1
       if counter >= patience:
         break
 
+    print(f"EPOCH {epoch + 1}:")
+    print(f"  Train loss = {train_loss:.4f} | Train accuracy = {train_acc:.4f}")
+    print(f"  Val   loss = {val_loss:.4f} | Val   accuracy = {val_acc:.4f}")
     
-    print(f"EPOCH {epoch + 1}: Train loss={train_loss:.4f}, Val loss={val_loss:.4f}, Val accuracy={val_acc:.4f}")
-    
-  training_performance = np.mean(all_train_losses)
-  validation_performance = np.mean(all_val_losses)
-  model.load_state_dict(best_model)
+  training_performance = (np.min(all_train_losses), np.max(all_train_acc))
+  validation_performance = (best_model_val_loss, best_model_val_acc)
+  model.load_state_dict(best_model) # restore the best model
   
   return model, training_performance, validation_performance
 
@@ -453,14 +499,14 @@ if __name__ == "__main__":
   val_rows = all_rows[split:]
   
   ## Question 2: Evaluate RNN
-  # model, train_performance, val_performance = financial_news_rnn_model(filepath, train_rows, val_rows)
-  # print(f"RNN: Final train performance (CE Loss) = {train_performance}")
-  # print(f"RNN: Final val performance (CE Loss) = {val_performance}")
+  model, train_performance, val_performance = financial_news_rnn_model(filepath, train_rows, val_rows)
+  print(f"RNN: Final train performance (CE Loss) = {train_performance[0]}, Final train accuracy = {train_performance[1]}")
+  print(f"RNN: Final val performance (CE Loss)   = {val_performance[0]}  , Final val accuracy   = {val_performance[1]}")
  
   ## Question 3: Evaluate Attention model
   model, train_performance, val_performance = financial_news_attention_model(filepath, train_rows, val_rows)
-  print(f"ATTENTION: Final train performance (CE Loss) = {train_performance}")
-  print(f"ATTENTION: Final val performance (CE Loss) = {val_performance}")
+  print(f"ATTENTION: Final train performance (CE Loss) = {train_performance[0]:.4f}, Final train accuracy = {train_performance[1]:.4f}")
+  print(f"ATTENTION: Final val performance (CE Loss)   = {val_performance[0]:.4f},   Final val accuracy   = {val_performance[1]:.4f}")
   
   def visualize():
     split = int(num_rows * 0.25) 
