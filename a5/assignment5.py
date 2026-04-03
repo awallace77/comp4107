@@ -63,6 +63,8 @@ class FinancialNewsDataset(torch.utils.data.Dataset):
       vocab = sorted(counts, key=counts.get, reverse=True)
 
       vocab_to_int = {word: ii+1 for ii, word in enumerate(vocab)}
+      # top_words = 6000
+      # vocab_to_int = {word: ii+1 for ii, word in enumerate(vocab[:top_words])}
       vocab_to_int["<PAD>"] = 0
       vocab_to_int["<UNK>"] = len(vocab_to_int) # append to end
       FinancialNewsDataset.shared_vocab_to_int = vocab_to_int
@@ -180,9 +182,9 @@ def financial_news_rnn_model(data_filepath, training_rows, validation_rows):
     def __init__(self, vocab_size, embed_dim=32, hidden_dim=32, output_dim=3):
       super().__init__()
       self.embedding = torch.nn.Embedding(vocab_size, embed_dim, padding_idx=0)
-      self.embedding_dropout = torch.nn.Dropout(0.3)
+      self.embedding_dropout = torch.nn.Dropout(0.4)
       self.rnn = torch.nn.GRU(embed_dim, hidden_dim, batch_first=True, num_layers=2, bidirectional=True, dropout=0.3)
-      self.dropout = torch.nn.Dropout(0.5)
+      self.dropout = torch.nn.Dropout(0.6)
       self.fc = torch.nn.Linear(hidden_dim * 2, output_dim) # * 2 b/c bidirectional
       
     def forward(self, x):
@@ -249,8 +251,6 @@ def financial_news_rnn_model(data_filepath, training_rows, validation_rows):
   best_val_loss = float('inf')
   
   epochs = 50
-  patience = 5
-  counter = 0
   
   all_train_losses = []
   all_train_acc = []
@@ -268,17 +268,12 @@ def financial_news_rnn_model(data_filepath, training_rows, validation_rows):
     all_val_losses.append(val_loss) 
     all_val_acc.append(val_acc)
     
-    # Early stopping & save best model
+    # Save best model
     if val_loss < best_val_loss:
       best_val_loss = val_loss
-      counter = 0
       best_model = copy.deepcopy(model.state_dict())
       best_model_val_loss = val_loss
       best_model_val_acc = val_acc
-    else:
-      counter += 1
-      if counter >= patience:
-        break
     
     print(f"EPOCH {epoch + 1}:")
     print(f"  Train loss = {train_loss:.4f} | Train accuracy = {train_acc:.4f}")
@@ -336,7 +331,7 @@ def financial_news_attention_model(data_filepath, training_rows, validation_rows
       
       # Embedding layer
       self.embedding = torch.nn.Embedding(vocab_size, embed_dim, padding_idx=0)
-      self.embedding_dropout = torch.nn.Dropout(0.3)
+      self.embedding_dropout = torch.nn.Dropout(0.4)
       
       # RNN
       self.rnn = torch.nn.GRU(embed_dim, hidden_dim, batch_first=True, num_layers=2, bidirectional=True, dropout=0.3)
@@ -346,8 +341,13 @@ def financial_news_attention_model(data_filepath, training_rows, validation_rows
         [AdditiveAttention(hidden_dim * 2) for _ in range(n_attention)]
       )
       
+      # Learned queries
+      self.query_layers = torch.nn.ModuleList(
+        [torch.nn.Linear(hidden_dim * 2, hidden_dim * 2) for _ in range(n_attention)]
+      )
+      
       # Dropout
-      self.dropout = torch.nn.Dropout(0.5)
+      self.dropout = torch.nn.Dropout(0.6)
       
       # Fully connected layer
       self.fc = torch.nn.Linear(hidden_dim * 2 * n_attention, output_dim)
@@ -357,7 +357,7 @@ def financial_news_attention_model(data_filepath, training_rows, validation_rows
       x = self.embedding_dropout(x)
       h_enc, h_T = self.rnn(x)
       h_enc = self.dropout(h_enc) 
-      
+     
       h_forward = h_T[-2]
       h_backward = h_T[-1]
       h_last = torch.cat((h_forward, h_backward), dim=1)
@@ -367,12 +367,13 @@ def financial_news_attention_model(data_filepath, training_rows, validation_rows
       context_vectors = []
       for i, attention in enumerate(self.attentions):
         # Use a different query per attention layer via
-        query = torch.tanh(h_last + i * 0.1)
+        query = torch.tanh(self.query_layers[i](h_last))
         context = attention(h_enc, query)
         context_vectors.append(context)
       
       # Concat all context vectors
       context = torch.cat(context_vectors, dim=1) 
+      context = self.dropout(context)
       
       out = self.fc(context)
       return out
@@ -442,8 +443,6 @@ def financial_news_attention_model(data_filepath, training_rows, validation_rows
   best_val_loss = float('inf')
   
   epochs = 50
-  patience = 5
-  counter = 0
   
   all_train_losses = []
   all_train_acc = []
@@ -462,17 +461,13 @@ def financial_news_attention_model(data_filepath, training_rows, validation_rows
     all_val_losses.append(val_loss)
     all_val_acc.append(val_acc)
     
-    # Early stopping & save best model
+    # Save best model
     if val_loss < best_val_loss:
       best_val_loss = val_loss
-      counter = 0
+      print(f"Best new model found")
       best_model = copy.deepcopy(model.state_dict())
       best_model_val_loss = val_loss
       best_model_val_acc = val_acc
-    else:
-      counter += 1
-      if counter >= patience:
-        break
 
     print(f"EPOCH {epoch + 1}:")
     print(f"  Train loss = {train_loss:.4f} | Train accuracy = {train_acc:.4f}")
@@ -499,9 +494,9 @@ if __name__ == "__main__":
   val_rows = all_rows[split:]
   
   ## Question 2: Evaluate RNN
-  model, train_performance, val_performance = financial_news_rnn_model(filepath, train_rows, val_rows)
-  print(f"RNN: Final train performance (CE Loss) = {train_performance[0]}, Final train accuracy = {train_performance[1]}")
-  print(f"RNN: Final val performance (CE Loss)   = {val_performance[0]}  , Final val accuracy   = {val_performance[1]}")
+  # model, train_performance, val_performance = financial_news_rnn_model(filepath, train_rows, val_rows)
+  # print(f"RNN: Final train performance (CE Loss) = {train_performance[0]}, Final train accuracy = {train_performance[1]}")
+  # print(f"RNN: Final val performance (CE Loss)   = {val_performance[0]}  , Final val accuracy   = {val_performance[1]}")
  
   ## Question 3: Evaluate Attention model
   model, train_performance, val_performance = financial_news_attention_model(filepath, train_rows, val_rows)
@@ -538,8 +533,4 @@ if __name__ == "__main__":
     val_viz_loader = DataLoader(ds, batch_size=64) 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     visualize_preds(model, val_viz_loader, device)
-  
-  
-  
-        
  
